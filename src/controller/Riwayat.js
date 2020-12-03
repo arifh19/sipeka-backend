@@ -1,45 +1,82 @@
 const model = require('../model/Riwayat')
+const modelNode = require('../model/Node')
+const response = require('../helper/response')
+const validator = require('../helper/validator')
+const redis = require('../config/Redis')
+
 const Riwayat = {}
 
 Riwayat.all = async (req, res) => {
     try {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE'); // If needed
-        res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type'); // If needed
-        res.setHeader('Access-Control-Allow-Credentials', true); // If needed
-        res.header("Cache-Control", "no-cache, no-store, must-revalidate");
-        res.header("Pragma", "no-cache");
-        res.header("Expires", 0);
-        const data = await model.getAll()
-        return res.status(200).json(data)
+        let message
+        const id = req.params.id
+        const getTable = await modelNode.getById(id)
+        if (getTable.length === 0) {
+            message = 'Node is not defined'
+            return response(res, 200, message, {})
+        }
+        const table = JSON.parse(JSON.stringify(getTable[0])).nama.replace(/\s+/, "")
+        const data = await model.getAll(table)
+        
+        if (data.length === 0) {
+            message = 'No Data'
+        } else {
+            message = 'List Data'
+        }
+        const data_redis = JSON.stringify(data)
+        redis.redisDB.set(`riwayat-${id}`, data_redis)
+        return response(res, 200, message, data)
+
     } catch (error) {
-        return res.status(500).json(error)
+        return response(res, 500, 'Error', error)
     }
 }
 
 Riwayat.add = async (req, res) => {
     try {
-        const {
-            name
-        } = req.body
-        console.log(name)
-        const data = await model.add(name)
-        return res.status(201).json(data)
+        const getTable = await modelNode.getById(req.body.node_id)
+        if (getTable.length === 0) {
+            message = 'Node is not defined'
+            return response(res, 200, message, {})
+        }
+        const table = JSON.parse(JSON.stringify(getTable[0])).nama.replace(/\s+/, "")
+        const data = {
+            table: table,
+            data: req.body.data,
+            node_id: req.body.node_id,
+        };
+        
+        const errors = validator.addHistory(data)
+
+        if (errors) {
+            return response(res, 400, 'Error', errors)
+        }
+        const results = await model.add(data)
+        
+        return response(res, 201, 'History added successfully', results)
     } catch (error) {
-        return res.status(500).json(error)
+        return response(res, 500, 'Error', error)
     }
 }
 
 Riwayat.edit = async (req, res) => {
     try {
-        const {
-            id,
-            name
-        } = req.body
-        const data = await model.edit(id, name)
-        return res.status(200).json(data)
+        const data = {
+            id: req.body.id,
+            data: req.body.data,
+            node_id: req.body.node_id,
+        };
+        
+        const errors = validator.editHistory(data)
+
+        if (errors) {
+            return response(res, 400, 'Error', errors)
+        }
+        const results = await model.edit(id, name)
+        return response(res, 200, 'History updated successfully', results)
+
     } catch (error) {
-        return res.status(500).json(error)
+        return response(res, 500, 'Error', error)
     }
 }
 
@@ -48,10 +85,17 @@ Riwayat.delete = async (req, res) => {
         const {
             id
         } = req.body
-        const data = await model.delete(id)
-        return res.status(200).json(data)
+        const errors = validator.deleteHistory(data)
+
+        if (errors) {
+            return response(res, 400, 'Error', errors)
+        }
+        
+        const results = await model.delete(id)
+
+        return response(res, 200, 'History deleted successfully', results)
     } catch (error) {
-        return res.status(500).json(error)
+        return response(res, 500, 'Error', error)
     }
 }
 module.exports = Riwayat
